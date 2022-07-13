@@ -64,17 +64,17 @@ local function init()
   -- per service/route
   metrics.status = prometheus:counter("http_status",
                                       "HTTP status codes per service/route in Kong",
-                                      {"service", "route", "code","uri"})
+                                      {"service", "route", "code","uri","servicegroup","publisher","userkey"})
   metrics.latency = prometheus:histogram("latency",
                                          "Latency added by Kong, total " ..
                                          "request time and upstream latency " ..
                                          "for each service/route in Kong",
-                                         {"service", "route", "type","uri"},
+                                         {"service", "route", "type","uri","servicegroup","publisher","userkey"},
                                          DEFAULT_BUCKETS) -- TODO make this configurable
   metrics.bandwidth = prometheus:counter("bandwidth",
                                          "Total bandwidth in bytes " ..
                                          "consumed per service/route in Kong",
-                                         {"service", "route", "type","uri"})
+                                         {"service", "route", "type","uri","servicegroup","publisher","userkey"})
 end
 
 local function init_worker()
@@ -84,7 +84,7 @@ end
 
 -- Since in the prometheus library we create a new table for each diverged label
 -- so putting the "more dynamic" label at the end will save us some memory
-local labels_table = {0, 0, 0, 0}
+local labels_table = {0, 0, 0, 0, 0, 0, 0}
 local upstream_target_addr_health_table = {
   { value = 0, labels = { 0, 0, 0, "healthchecks_off" } },
   { value = 0, labels = { 0, 0, 0, "healthy" } },
@@ -129,10 +129,59 @@ local function log(message)
     route_name = message.route.name or message.route.id
   end
 
+  local servicegroup_name = "None"
+  local publisher_name = "None"
+  local userkey_name = "None"
+  local uri_name = message.route.paths[1]  
+  if message and message.service and message.service.tags then
+      local tags = message.service.tags
+      local n = #tags
+      for i= 1, n do
+        local tagv2s = {} 
+        for w in string.gmatch(tags[i], "[^-]+") do
+          table.insert(tagv2s, w)
+        end
+        if(#tagv2s == 2) then
+          if(tagv2s[1] == "servicegroup") then
+            servicegroup_name = tagv2s[2]
+          elseif(tagv2s[1] == "publisher") then
+            publisher_name = tagv2s[2]
+          elseif(tagv2s[1] == "uri" and tagv2s[2] == "uri") then
+            uri_name = message.request.uri       
+          end 
+        end 
+      end 
+  end
+
+  if message and message.route and message.route.tags then
+      local tags = message.route.tags
+      local n = #tags
+      for i= 1, n do
+        local tagv2s = {} 
+        for w in string.gmatch(tags[i], "[^-]+") do
+          table.insert(tagv2s, w)
+        end
+        if(#tagv2s == 2) then
+          if(tagv2s[1] == "servicegroup") then
+            servicegroup_name = tagv2s[2]
+          elseif(tagv2s[1] == "publisher") then
+            publisher_name = tagv2s[2]
+          elseif(tagv2s[1] == "uri" and tagv2s[2] == "uri") then
+            uri_name = message.request.uri               
+          end 
+        end 
+      end 
+  end  
+
+
   labels_table[1] = service_name
   labels_table[2] = route_name
   labels_table[3] = message.response.status
-  labels_table[4] = message.request.uri
+  labels_table[4] = uri_name
+  labels_table[5] = servicegroup_name
+  labels_table[6] = publisher_name
+  labels_table[7] = userkey_name
+
   metrics.status:inc(1, labels_table)
 
   local request_size = tonumber(message.request.size)
