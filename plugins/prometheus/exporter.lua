@@ -64,17 +64,17 @@ local function init()
   -- per service/route
   metrics.status = prometheus:counter("http_status",
                                       "HTTP status codes per service/route in Kong",
-                                      {"service", "route", "code"})
+                                      {"service", "route", "code","uri"})
   metrics.latency = prometheus:histogram("latency",
                                          "Latency added by Kong, total " ..
                                          "request time and upstream latency " ..
                                          "for each service/route in Kong",
-                                         {"service", "route", "type"},
+                                         {"service", "route", "type","uri"},
                                          DEFAULT_BUCKETS) -- TODO make this configurable
   metrics.bandwidth = prometheus:counter("bandwidth",
                                          "Total bandwidth in bytes " ..
                                          "consumed per service/route in Kong",
-                                         {"service", "route", "type"})
+                                         {"service", "route", "type","uri"})
 end
 
 local function init_worker()
@@ -84,7 +84,7 @@ end
 
 -- Since in the prometheus library we create a new table for each diverged label
 -- so putting the "more dynamic" label at the end will save us some memory
-local labels_table = {0, 0, 0}
+local labels_table = {0, 0, 0, 0}
 local upstream_target_addr_health_table = {
   { value = 0, labels = { 0, 0, 0, "healthchecks_off" } },
   { value = 0, labels = { 0, 0, 0, "healthy" } },
@@ -132,6 +132,7 @@ local function log(message)
   labels_table[1] = service_name
   labels_table[2] = route_name
   labels_table[3] = message.response.status
+  labels_table[4] = message.request.uri
   metrics.status:inc(1, labels_table)
 
   local request_size = tonumber(message.request.size)
